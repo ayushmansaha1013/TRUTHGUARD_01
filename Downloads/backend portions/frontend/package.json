@@ -1,0 +1,41 @@
+{
+  "name": "truthguard-ai-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "TruthGuard AI - Deepfake & Misinformation Detection platform for civic education (UN SDG 4 & 16)",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "backend:check": "python ../tools/check_backend.py",
+    "backend:check3": "python3 ../tools/check_backend.py",
+    "backend:mock": "python ../tools/mock_backend.py",
+    "backend:mock3": "python3 ../tools/mock_backend.py"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "vite": "^5.4.8",
+    "vitest": "^4.1.11"
+  }
+}

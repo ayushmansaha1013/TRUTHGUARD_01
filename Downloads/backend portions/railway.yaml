@@ -1,0 +1,60 @@
+# =============================================================================
+# railway.yaml — the SAME backend on Railway instead of Render
+# =============================================================================
+# Use this OR render.yaml, not both. Railway is worth knowing about because its
+# free/hobby allowance behaves differently: Render suspends a free service after
+# ~15 minutes idle (a 30-60s cold start mid-demo), whereas Railway's trial plan
+# meters usage rather than sleeping, so it stays warm.
+#
+# DEPLOY: railway up  (with the Railway CLI)  or  New Project -> GitHub Repo.
+# Railway auto-detects Python via requirements.txt and reads this file.
+#
+# The backend code does not change at all — it already binds 0.0.0.0 and reads
+# $PORT, which is what every PaaS wants. That portability is deliberate: nothing
+# in backend/ is Render-specific.
+# =============================================================================
+
+build:
+  # WHY an explicit root: the repo holds frontend/ + backend/ + supabase/, and
+  # Railway would otherwise try to build the whole thing.
+  rootDir: backend
+  builder: NIXPACKS
+  # Nixpacks detects Python from requirements.txt. The start command comes from
+  # Procfile, which is already in backend/ and says exactly the right thing:
+  #     web: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+
+deploy:
+  # WHY a start command here too: it is more explicit than relying on Procfile
+  # detection, and Railway's logs will show you what it ran.
+  startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+  # WHY a health check path: without it Railway considers the deploy successful
+  # the moment the process starts, even if the app crashed on import.
+  healthcheckPath: /health
+  healthcheckTimeout: 120
+  restartPolicyType: ON_FAILURE
+  restartPolicyMaxRetries: 5
+
+variables:
+  # Same names and defaults as render.yaml. Secrets must be set in the dashboard
+  # (or `railway variables --set`), never committed.
+  AUTH_ENABLED: "true"
+  DETECTION_ENGINE: heuristic
+  FACT_CHECK_ENGINE: duckduckgo
+  GROQ_MODEL: llama-3.3-70b-versatile
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_PER_MINUTE: "20"
+  FACT_CHECK_TIMEOUT: "15"
+  PYTHONUNBUFFERED: "1"
+
+  # WHY THIS LINE MATTERS ON RAILWAY TOO: Nixpacks/Railpack resolve a Python
+  # version before installing anything, and the default is not the one this app
+  # is pinned against. On 3.14, numpy and pydantic-core have no prebuilt wheel,
+  # so pip compiles them from source, needs a Rust toolchain, and dies on a
+  # read-only cargo registry after ~6 minutes.
+  # Nixpacks accepts a MAJOR.MINOR version here ("3.11"), not a patch version.
+  # It also reads runtime.txt ("python-3.11.9") and .python-version, both of
+  # which exist in backend/ — so this line is the third layer of the same answer.
+  NIXPACKS_PYTHON_VERSION: "3.11"
+  # SUPABASE_JWT_SECRET   <- set in the dashboard
+  # SUPABASE_PROJECT_URL  <- set in the dashboard
+  # FRONTEND_ORIGIN       <- set in the dashboard, e.g. https://truthguard-ai.vercel.app

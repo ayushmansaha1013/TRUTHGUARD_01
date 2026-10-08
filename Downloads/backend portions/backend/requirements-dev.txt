@@ -1,0 +1,2 @@
+# Test-only dependencies. Not needed to run or deploy the service.
+pytest==8.3.4

@@ -1,0 +1,39 @@
+# =============================================================================
+# TruthGuard AI — Backend
+# FastAPI · deepfake image detection · claim fact-checking · JWT-protected
+# Deploys to Render (render.yaml). Runs locally with zero setup.
+# =============================================================================
+
+# --- Core web stack ---------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20        # REQUIRED for UploadFile / Form parsing
+pydantic==2.10.4
+
+# --- Auth (Part C.1) --------------------------------------------------------
+PyJWT==2.10.1                   # verifies Supabase JWTs
+cryptography==44.0.0            # REQUIRED by PyJWT for RS256/ES256 (asymmetric)
+                                # Supabase signing keys — new projects since May
+                                # 2025 default to RS256, so without this the
+                                # JWKS path raises at import and every AI call
+                                # returns 503. HS256-only deploys do not need it.
+
+# --- Local configuration ----------------------------------------------------
+python-dotenv==1.0.1            # reads backend/.env; platform env vars still win
+
+# --- Image forensics engine -------------------------------------------------
+Pillow==11.1.0                  # decode jpg/png/webp, read EXIF
+numpy==2.2.1                    # residual / block-grid analysis
+
+# --- Fact-check retrieval ---------------------------------------------------
+httpx==0.28.1                   # HTTP client for search providers
+beautifulsoup4==4.12.3          # strip HTML from result snippets
+ddgs==9.5.2                     # DuckDuckGo search — FREE, no API key
+
+# NOTE ON DEEPER ENGINES (optional, not installed by default):
+#   DETECTION_ENGINE=transformer needs `pip install torch transformers`
+#     (~2 GB, GPU or a Render paid instance). The code path exists in
+#     services/detection/transformer_engine.py and is selected by env var only.
+#   FACT_CHECK_ENGINE=llm needs a free Groq/OpenRouter key in GROQ_API_KEY.
+# Keeping these OUT of requirements.txt is deliberate: the default install is
+# small, fast, and cannot fail the build on Render's free tier.

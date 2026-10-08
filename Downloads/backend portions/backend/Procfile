@@ -1,0 +1,4 @@
+# Fallback for platforms that read a Procfile (Heroku, Railway, and Render when
+# no startCommand is configured). `web:` is the process type the platform routes
+# HTTP traffic to; $PORT is injected by the platform at runtime.
+web: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1

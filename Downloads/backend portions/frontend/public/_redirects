@@ -1,0 +1,10 @@
+# Netlify SPA fallback.
+# WHY: React Router handles /scanner, /fact-checker, /dashboard on the CLIENT.
+# If a user refreshes one of those URLs, or opens a shared link, the static host
+# looks for a file at that path, finds nothing, and serves a 404 — the app never
+# gets a chance to route. This rewrites every unmatched path to index.html with a
+# 200 (not a 301), so deep links and refreshes work.
+#
+# This file lives in public/ so Vite copies it to dist/. That matters for Netlify
+# DROP, which uploads a prebuilt folder and never reads netlify.toml from a repo.
+/*    /index.html   200

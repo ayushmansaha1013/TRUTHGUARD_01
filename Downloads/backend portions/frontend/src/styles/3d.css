@@ -1,0 +1,578 @@
+/* ===========================================================================
+   TruthGuard AI — 3D & interaction layer
+   ---------------------------------------------------------------------------
+   Everything here is driven by `transform`, `opacity` and custom properties.
+   Those are the only three things a browser can animate on the compositor
+   thread without re-running layout or paint, which is why the page stays at
+   60fps while a WebGL scene, a dozen tilt cards and a pointer spotlight are all
+   live at once.
+
+   Rules followed throughout:
+     • never animate width/height/top/left/margin/box-shadow-spread
+     • every hover effect has a visible :focus-visible equivalent (keyboard users
+       get the same affordance as mouse users)
+     • every animation is disabled under prefers-reduced-motion (block at the end)
+     • decorative layers are pointer-events:none so they can never swallow a click
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. AMBIENT BACKGROUND — perspective grid floor + aurora + noise
+   --------------------------------------------------------------------------- */
+.bg-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none; /* decorative: must never block a click */
+}
+
+/* The "tron floor": a grid rotated in 3D and faded toward the horizon.
+   `perspective` + `rotateX` is what turns a flat repeating-linear-gradient into
+   a receding plane. */
+.bg-grid {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -12%;
+  height: 62vh;
+  background-image:
+    repeating-linear-gradient(to right, rgba(100, 255, 218, 0.14) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(to bottom, rgba(100, 255, 218, 0.14) 0 1px, transparent 1px 64px);
+  transform: perspective(420px) rotateX(64deg);
+  transform-origin: bottom center;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent 78%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent 78%);
+  animation: grid-drift 14s linear infinite;
+  opacity: 0.55;
+}
+
+@keyframes grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to   { background-position: 0 64px, 0 64px; }
+}
+
+/* Two slow-drifting colour fields. Blurred divs, not box-shadows, because a
+   large blurred element is cheaper to composite than a large shadow. */
+.bg-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  will-change: transform;
+}
+.bg-aurora--a {
+  width: 46vw;
+  height: 46vw;
+  top: -14vw;
+  left: -8vw;
+  background: radial-gradient(circle, rgba(100, 255, 218, 0.32), transparent 68%);
+  animation: aurora-a 26s ease-in-out infinite alternate;
+}
+.bg-aurora--b {
+  width: 40vw;
+  height: 40vw;
+  right: -10vw;
+  top: 6vh;
+  background: radial-gradient(circle, rgba(136, 146, 176, 0.3), transparent 68%);
+  animation: aurora-b 32s ease-in-out infinite alternate;
+}
+@keyframes aurora-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(6vw, 5vh, 0) scale(1.14); }
+}
+@keyframes aurora-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to   { transform: translate3d(-7vw, 8vh, 0) scale(0.94); }
+}
+
+/* Film grain. An inline SVG data URI (no network request — the in-app preview is
+   sandboxed with no network access) at 4% opacity. It kills the "flat gradient"
+   look and makes dark navy read as a material. */
+.bg-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+/* ---------------------------------------------------------------------------
+   2. GLASS PANELS
+   --------------------------------------------------------------------------- */
+.glass {
+  background:
+    linear-gradient(150deg, rgba(17, 34, 64, 0.92) 0%, rgba(10, 25, 47, 0.82) 100%);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(100, 255, 218, 0.12);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 0 rgba(230, 241, 255, 0.06) inset,
+    0 18px 44px -22px rgba(2, 12, 27, 0.9);
+}
+
+/* A hairline gradient border — the "lit edge" look. Done with a masked pseudo
+   element rather than border-image so the radius stays crisp. */
+.glass-edge {
+  position: relative;
+}
+.glass-edge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, rgba(100, 255, 218, 0.55), rgba(100, 255, 218, 0) 42%, rgba(136, 146, 176, 0.28));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, #e6f1ff 0%, #64ffda 52%, #8892b0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   3. TILT CARD (pointer-driven CSS 3D)
+   --------------------------------------------------------------------------- */
+.tilt-wrap {
+  position: relative;
+  transform-style: preserve-3d;
+}
+.tilt-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  --gx: 50%;
+  --gy: 50%;
+  --glare-o: 0;
+}
+/* The glare: a soft radial highlight that follows the pointer. */
+.tilt-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--glare-o);
+  transition: opacity 420ms ease;
+  background: radial-gradient(
+    340px circle at var(--gx) var(--gy),
+    rgba(100, 255, 218, 0.16),
+    transparent 62%
+  );
+  mix-blend-mode: screen;
+}
+/* Anything marked .tilt-float is pushed forward on Z, so the perspective
+   projection scales it up — a genuine depth separation from the card surface. */
+.tilt-float {
+  transform: translateZ(var(--tz, 30px));
+  transform-style: preserve-3d;
+}
+
+/* ---------------------------------------------------------------------------
+   4. SPOTLIGHT CARD (edge-tracking light)
+   --------------------------------------------------------------------------- */
+.spotlight {
+  position: relative;
+  overflow: hidden;
+  --mx: 50%;
+  --my: 50%;
+  --spot-o: 0;
+  --spot-r: 320px;
+}
+.spotlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--spot-o);
+  transition: opacity 380ms ease;
+  background: radial-gradient(
+    var(--spot-r) circle at var(--mx) var(--my),
+    rgba(100, 255, 218, 0.13),
+    rgba(100, 255, 218, 0.04) 38%,
+    transparent 68%
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   5. SCROLL REVEAL
+   --------------------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translate3d(var(--rv-x, 0), var(--rv-y, 22px), 0) scale(var(--rv-s, 1));
+  transition:
+    opacity cubic-bezier(0.16, 1, 0.3, 1),
+    transform cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal--in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+/* ---------------------------------------------------------------------------
+   6. MAGNETIC BUTTON
+   --------------------------------------------------------------------------- */
+.magnetic {
+  display: inline-block;
+  will-change: transform;
+}
+.magnetic-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  will-change: transform;
+}
+
+/* ---------------------------------------------------------------------------
+   7. CONFIDENCE RING
+   --------------------------------------------------------------------------- */
+.confidence-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  --ring-color: #64ffda;
+}
+.confidence-ring__svg {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--ring-color) 45%, transparent));
+}
+.confidence-ring__arc {
+  transition: stroke 500ms ease;
+}
+/* Rotating sheen behind the ring: sells the idea of a curved, reflective dial. */
+.confidence-ring__sheen {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  z-index: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--ring-color) 22%, transparent) 60deg,
+    transparent 150deg,
+    transparent 360deg
+  );
+  filter: blur(14px);
+  animation: ring-spin 9s linear infinite;
+  pointer-events: none;
+}
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+.confidence-ring__center {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.confidence-ring__value {
+  font-family: 'Poppins', 'Inter', sans-serif;
+  font-size: clamp(1.6rem, 4.6vw, 2.35rem);
+  font-weight: 600;
+  color: #e6f1ff;
+}
+.confidence-ring__unit {
+  font-size: 0.8rem;
+  color: var(--ring-color);
+  margin-top: 2px;
+  font-weight: 600;
+}
+.confidence-ring__label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8892b0;
+  margin-top: 8px;
+  text-align: center;
+  max-width: 9rem;
+}
+
+/* ---------------------------------------------------------------------------
+   8. VERDICT FLIP CARD (true 3D rotation)
+   --------------------------------------------------------------------------- */
+.flip-viewport {
+  perspective: 1400px;
+  perspective-origin: 50% 45%;
+  width: 100%;
+}
+.flip-card {
+  position: relative;
+  width: 100%;
+  transform-style: preserve-3d;
+  transform: rotateY(0deg);
+  /* All three faces are absolutely positioned (that is what lets them occupy the
+     same space and rotate as one object), so NOTHING in flow can give the card a
+     height. It has to be declared: --flip-h is set by the component. */
+  height: var(--flip-h, 34rem);
+}
+.flip-card--animated {
+  transition: transform 900ms cubic-bezier(0.2, 0.9, 0.24, 1);
+}
+/* While "scanning" the card sits on its edge and rocks — visible computation. */
+.flip-card--animated[data-spinning='true'] {
+  animation: flip-rock 1.5s ease-in-out infinite;
+}
+@keyframes flip-rock {
+  0%, 100% { transform: rotateY(90deg) translateZ(24px); }
+  50%      { transform: rotateY(96deg) translateZ(30px); }
+}
+.flip-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+  background: linear-gradient(155deg, rgba(17, 34, 64, 0.96), rgba(10, 25, 47, 0.9));
+  border: 1px solid rgba(100, 255, 218, 0.14);
+  box-shadow: 0 24px 60px -30px rgba(2, 12, 27, 0.95);
+}
+.flip-face--back {
+  transform: rotateY(180deg);
+}
+/* The edge face is rotated 90° so it is only visible mid-flip. */
+.flip-face--edge {
+  transform: rotateY(90deg) translateZ(0);
+  background: linear-gradient(180deg, rgba(100, 255, 218, 0.1), rgba(17, 34, 64, 0.96));
+}
+/* Reduced-motion variant: cross-fade instead of rotate. */
+.flip-card--reduced .flip-face {
+  transform: none !important;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  position: absolute;
+}
+.flip-card--reduced .flip-face[data-visible='true'] {
+  opacity: 1;
+  position: relative;
+}
+.flip-shield {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  color: #64ffda;
+  background: radial-gradient(circle at 34% 28%, rgba(100, 255, 218, 0.22), rgba(100, 255, 218, 0.04));
+  border: 1px solid rgba(100, 255, 218, 0.3);
+  box-shadow: 0 0 30px -8px rgba(100, 255, 218, 0.5);
+  animation: shield-breathe 4.4s ease-in-out infinite;
+}
+@keyframes shield-breathe {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.92; }
+  50%      { transform: translateY(-5px) scale(1.035); opacity: 1; }
+}
+
+/* Sweeping scan line used during analysis */
+.scanline {
+  width: 132px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #64ffda, transparent);
+  background-size: 200% 100%;
+  animation: scanline-sweep 1.25s linear infinite;
+  box-shadow: 0 0 16px rgba(100, 255, 218, 0.7);
+}
+@keyframes scanline-sweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* ---------------------------------------------------------------------------
+   9. CSS 3D HERO FALLBACK
+   --------------------------------------------------------------------------- */
+.hero3d-fallback {
+  perspective: 900px;
+}
+.hero3d-stage {
+  position: relative;
+  width: min(360px, 74vw);
+  height: min(360px, 74vw);
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hero3d-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(100, 255, 218, 0.35);
+  box-shadow: 0 0 26px -8px rgba(100, 255, 218, 0.6) inset;
+}
+.hero3d-ring--1 {
+  transform: rotateX(74deg) rotateZ(0deg);
+  animation: ring-orbit 17s linear infinite;
+}
+.hero3d-ring--2 {
+  inset: 12%;
+  border-color: rgba(136, 146, 176, 0.4);
+  transform: rotateX(64deg) rotateY(28deg);
+  animation: ring-orbit 23s linear infinite reverse;
+}
+.hero3d-ring--3 {
+  inset: 24%;
+  border-color: rgba(100, 255, 218, 0.22);
+  transform: rotateY(72deg);
+  animation: ring-orbit 29s linear infinite;
+}
+@keyframes ring-orbit {
+  to { transform: rotate3d(1, 1, 0.4, 360deg); }
+}
+.hero3d-core {
+  position: absolute;
+  inset: 30%;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  background: radial-gradient(circle at 34% 26%, rgba(100, 255, 218, 0.2), rgba(17, 34, 64, 0.95));
+  border: 1px solid rgba(100, 255, 218, 0.3);
+  box-shadow: 0 0 60px -18px rgba(100, 255, 218, 0.75);
+  transform: translateZ(46px);
+  animation: core-float 6s ease-in-out infinite;
+}
+@keyframes core-float {
+  0%, 100% { transform: translateZ(46px) translateY(0); }
+  50%      { transform: translateZ(58px) translateY(-8px); }
+}
+.hero3d-mote {
+  position: absolute;
+  left: var(--mx);
+  top: var(--my);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #64ffda;
+  opacity: 0.55;
+  transform: translateZ(var(--md, 0px));
+  animation: mote-float var(--ms, 6s) ease-in-out infinite;
+}
+@keyframes mote-float {
+  0%, 100% { opacity: 0.2; transform: translate3d(0, 0, 0); }
+  50%      { opacity: 0.75; transform: translate3d(6px, -12px, 22px); }
+}
+
+/* ---------------------------------------------------------------------------
+   10. CHAT BUBBLE ENTRANCE + typing indicator
+   --------------------------------------------------------------------------- */
+.bubble-in {
+  animation: bubble-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.97); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+/* ---------------------------------------------------------------------------
+   11. MISC INTERACTION FEEDBACK
+   --------------------------------------------------------------------------- */
+/* Press feedback: a physical "push in" on active, which is a stronger signal
+   than a colour change alone (works for colour-blind users). */
+.press {
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 220ms ease, background-color 220ms ease, border-color 220ms ease;
+}
+.press:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+/* Keyboard focus must be at least as visible as hover. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid #64ffda;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Floating label / progress sheen used on primary CTAs */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(230, 241, 255, 0.35), transparent);
+  transform: skewX(-18deg);
+  animation: sheen-slide 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sheen-slide {
+  0%, 62% { left: -60%; }
+  100%    { left: 130%; }
+}
+
+/* ---------------------------------------------------------------------------
+   12. REDUCED MOTION — one place, overrides everything above.
+   WCAG 2.2.2: motion that is not essential must be suppressible.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .bg-grid,
+  .bg-aurora--a,
+  .bg-aurora--b,
+  .confidence-ring__sheen,
+  .hero3d-ring,
+  .hero3d-core,
+  .hero3d-mote,
+  .flip-shield,
+  .scanline,
+  .sheen::after,
+  .bubble-in,
+  .reveal {
+    animation: none !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .tilt-inner,
+  .magnetic,
+  .magnetic-label,
+  .hero3d-stage,
+  .flip-card {
+    transform: none !important;
+    transition: none !important;
+  }
+  .tilt-glare,
+  .spotlight::after {
+    display: none !important;
+  }
+  /* Keep the scanline's *information* (something is happening) without motion. */
+  .scanline {
+    background: #64ffda;
+    opacity: 0.7;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   13. FLOATING GLASS CHIPS (over the WebGL hero)
+   Each chip drifts on its own period so the group never looks synchronised.
+   --------------------------------------------------------------------------- */
+.chip-float {
+  animation: chip-float 7.5s ease-in-out infinite;
+  will-change: transform;
+  box-shadow:
+    0 1px 0 0 rgba(230, 241, 255, 0.07) inset,
+    0 14px 34px -18px rgba(2, 12, 27, 0.95);
+}
+@keyframes chip-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -11px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip-float { animation: none !important; }
+}

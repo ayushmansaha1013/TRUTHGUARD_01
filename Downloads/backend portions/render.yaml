@@ -1,0 +1,141 @@
+# =============================================================================
+# render.yaml — Render Blueprint for the TruthGuard AI backend
+# =============================================================================
+# HOW TO USE (two ways — pick one)
+#
+#   A) PUSH TO GITHUB, THEN "NEW +" -> "BLUEPRINT"   (recommended)
+#      Render reads this file, creates the web service, sets every environment
+#      variable below, and deploys on every push to main.
+#
+#   B) CREATE A WEB SERVICE MANUALLY
+#      If you'd rather click through the dashboard, use exactly these values:
+#        Root Directory      backend
+#        Runtime             Python 3
+#        Build Command       pip install -r requirements.txt
+#        Start Command       uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+#        Health Check Path   /health
+#      ...then add the env vars from the `envVars` block below.
+#
+# WHY A BLUEPRINT FILE IS WORTH IT
+#   It is infrastructure-as-code you can commit. If the service is deleted, or a
+#   marker asks "how is this deployed?", the answer is in the repo rather than in
+#   someone's dashboard session.
+#
+# WHY `sync: false`
+#   With sync true, Render overwrites dashboard edits on every deploy. Since you
+#   will paste a real Supabase JWT secret into the dashboard, you do not want a
+#   later push silently reverting it to the placeholder in this file.
+# =============================================================================
+
+services:
+  - type: web
+    name: truthguard-backend
+    runtime: python
+    region: singapore          # WHY: lowest latency to India. Change if your marker is elsewhere.
+    plan: free
+    rootDir: backend           # WHY: the repo holds frontend + backend + supabase;
+                               # Render must only see the Python service.
+    buildCommand: pip install -r requirements.txt
+    # WHY --workers 1: api/rate_limit.py keeps its counter in process memory, so
+    # two workers would each enforce the limit independently and the effective
+    # ceiling would double. Raise this only after moving the limiter to Redis.
+    # WHY $PORT: Render injects the port it wants bound. Hard-coding 8000 makes
+    # the service boot fine and then fail its health check forever.
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    # WHY an explicit health check path: Render probes this to decide whether the
+    # deploy succeeded. Without it, a slow first inference request can look like a
+    # dead service and trigger a restart loop.
+    healthCheckPath: /health
+    # WHY autoDeploy: a push to main redeploys. Convenient during the deadline;
+    # set to false once you are presenting so a stray commit cannot break a demo.
+    autoDeploy: true
+    # WHY a build filter: edits to frontend/ or docs/ should not redeploy the API.
+    # (Only honoured when using the Blueprint + GitHub integration.)
+    buildFilter:
+      ignoredPaths:
+        - frontend/**
+        - docs/**
+        - supabase/**
+        - tools/**
+        - "*.md"
+
+    envVars:
+      # --- REQUIRED: paste your real Supabase values in the dashboard ---------
+      # WHY they are NOT marked sync:false individually: a Blueprint env var
+      # without a value is created empty and Render flags it for you to fill in,
+      # which is exactly the behaviour we want for secrets.
+      - key: SUPABASE_JWT_SECRET
+        sync: false            # secret you paste in the dashboard; never committed
+      - key: SUPABASE_PROJECT_URL
+        sync: false            # e.g. https://abcdefgh.supabase.co
+
+      # --- Auth behaviour -----------------------------------------------------
+      # WHY AUTH_ENABLED defaults to "true" here: fail CLOSED. If the secret is
+      # missing, every AI call returns 503 rather than silently accepting
+      # anonymous traffic. To demo without Supabase you must consciously flip
+      # this to false — a deliberate act, not an accident.
+      - key: AUTH_ENABLED
+        value: "true"
+
+      # --- REQUIRED: your deployed frontend URL -------------------------------
+      # WHY: without this the browser blocks every call with a CORS error. Local
+      # development is already covered by the defaults in backend/config.py.
+      # Set it to e.g. https://truthguard-ai.vercel.app
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+      # --- Engines -------------------------------------------------------------
+      # WHY "heuristic": no model download, boots in seconds on the free tier, and
+      # cannot fail a deploy. Switch to "transformer" only on a paid instance
+      # with >= 4 GB RAM (see services/detection/transformer_engine.py).
+      - key: DETECTION_ENGINE
+        value: heuristic
+      # WHY "duckduckgo": free and keyless. Switch to "llm" and add GROQ_API_KEY
+      # (free at console.groq.com) for materially better fact-check verdicts —
+      # the keyword scorer misjudges some claims, see docs/DEPLOY.md §7.
+      - key: FACT_CHECK_ENGINE
+        value: duckduckgo
+      - key: GROQ_API_KEY
+        sync: false            # optional: only needed for FACT_CHECK_ENGINE=llm
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+
+      # --- Limits ---------------------------------------------------------------
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "20"            # WHY 20: enough for a classroom demo, low enough
+                               # that a runaway retry loop cannot exhaust a free
+                               # instance's CPU for everyone else.
+      - key: FACT_CHECK_TIMEOUT
+        value: "15"
+
+      # --- Python ---------------------------------------------------------------
+      # WHY pin the version explicitly: Render's Python default moves over time
+      # (3.14.3 as of Feb 2026), and "it worked last week" is not a debugging
+      # strategy the night before a submission.
+      #
+      # THIS IS NOT OPTIONAL COSMETIC PINNING. On Python 3.14 several pinned
+      # dependencies have NO prebuilt wheel, so pip falls back to building them
+      # from source — numpy and pydantic-core need a Rust toolchain, and the
+      # failure looks like this after six minutes of build time:
+      #     error: failed to create directory
+      #     `/usr/local/cargo/registry/cache/...`: Read-only file system (os error 30)
+      #     💥 maturin failed
+      #     × Encountered error while generating package metadata. -> pydantic-core
+      # It reads like a broken repo. It is a missing version pin.
+      #
+      # ⚠️ THIS VALUE IS ONLY APPLIED IF THE SERVICE IS CREATED FROM THIS
+      # BLUEPRINT. If the service was created by hand (New + → Web Service),
+      # Render never reads this file, and PYTHON_VERSION must be added in the
+      # dashboard's Environment tab instead. On Render the env var must be FULLY
+      # QUALIFIED — "3.11" is rejected, "3.11.9" is accepted.
+      # Belt and braces: `.python-version` files at the repo root and in backend/
+      # (Render also reads those, and unlike env vars they survive a rebuild from
+      # a fresh service).
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: PYTHONUNBUFFERED
+        value: "1"             # WHY: without this, print() output is block-buffered
+                               # and your [audit] lines appear in the Render log
+                               # minutes late or not at all.

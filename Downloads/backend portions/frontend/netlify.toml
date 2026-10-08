@@ -1,0 +1,28 @@
+# =============================================================================
+# Netlify config — only read if you deploy the frontend to Netlify.
+# Harmless on Vercel, which auto-detects Vite and does the SPA redirect itself.
+# =============================================================================
+[build]
+  # WHY an explicit command and publish dir: Netlify's Vite detection is usually
+  # right, but a monorepo with a Python `backend/` folder at the root confuses it.
+  command = "npm run build"
+  publish = "dist"
+
+# WHY this redirect block is not optional on Netlify: this is a client-side-routed
+# SPA. Without it, refreshing on /scanner or /dashboard asks Netlify for a file
+# that does not exist and the user gets a 404 — while navigating there by clicking
+# works fine. That asymmetry is maddening to debug during a live demo.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# WHY set these in the Netlify UI rather than here: VITE_* values are inlined into
+# the bundle at BUILD time, and committing a Supabase URL to the repo means it
+# cannot be rotated without a commit. The anon key is public by design (RLS, not
+# the key, protects the data) but the *URL* still belongs in the dashboard.
+#   VITE_API_BASE_URL        = https://truthguard-backend.onrender.com
+#   VITE_SUPABASE_URL        = https://<project-ref>.supabase.co
+#   VITE_SUPABASE_ANON_KEY   = <anon public key — NEVER the service_role key>
+#   VITE_DEMO_MODE           = false
+#   VITE_RATE_LIMIT_COOLDOWN_SECONDS = 10

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- SECURITY (Part C.5 — XSS / Content Security Policy):
+         A Content-Security-Policy header is the single most effective browser-side
+         defence against XSS, because it forbids inline <script> execution and
+         restricts where the page may load code from. If an attacker ever managed to
+         inject markup, this policy stops the injected script from actually running.
+         We deliver it as a <meta> tag so it also applies to `vite preview` and to
+         static hosts (Netlify/Vercel/GitHub Pages) with no server config.
+         In production, ALSO set it as a real HTTP response header (see README). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://*.onrender.com https://*.up.railway.app https://*.hf.space https://*.workers.dev http://localhost:8000 http://127.0.0.1:8000; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+    />
+    <!-- WHY connect-src lists hosts EXPLICITLY instead of allowing https: universally:
+         connect-src is what stops a successful XSS from quietly POSTing a user's data
+         to an attacker's server. Opening it to `https:` would hand that capability
+         straight back. So every legitimate destination is named:
+             'self'                  the Vite dev proxy (/api/* -> :8000) and same-origin calls
+             *.supabase.co           Supabase Auth + Postgres REST (Part B)
+             *.onrender.com          the FastAPI backend on Render   <-- REQUIRED. Omitting it
+             *.up.railway.app        the same backend on Railway        makes the browser block
+             localhost/127.0.0.1:8000  the backend running on a laptop   every AI call with
+                                                                        "Refused to connect"
+                                                                        even when the URL is
+                                                                        perfectly correct.
+         Adding a host is a one-line change; leaving one out produces a CSP violation
+         that looks nothing like a configuration mistake. -->
+
+    <!-- SECURITY: stop the browser from guessing MIME types of uploaded/embedded resources. -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <!-- SECURITY: don't leak full URLs of the app to third parties via the Referer header. -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <title>TruthGuard AI — Deepfake &amp; Misinformation Detection</title>
+    <meta
+      name="description"
+      content="TruthGuard AI helps students and educators detect deepfake images and verify claims. Built for civic education (UN SDG 4 &amp; SDG 16)."
+    />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- RUNTIME CONFIGURATION — loaded BEFORE the app bundle.
+         WHY this exists when Vite already has .env: Vite substitutes VITE_* values
+         at BUILD time, so a built bundle is permanently frozen to whatever the
+         environment said that day. That is fine for a Git-connected host, but it
+         breaks the common case of dropping a prebuilt folder onto Netlify: there is
+         no build step and no env-var screen, so the only way to change the backend
+         URL would be to rebuild from source.
+         This file is read at RUNTIME, so one line can be edited and re-uploaded in
+         seconds, from any machine, with no Node installed. Precedence is
+         runtime config -> build-time VITE_API_BASE_URL -> error.
+         SECURITY: served from our own origin and covered by script-src 'self' — it
+         cannot be swapped for a third-party script, and it holds no secrets (the
+         backend URL is public anyway). -->
+    <script src="/config.js"></script>
+
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

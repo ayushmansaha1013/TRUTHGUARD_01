@@ -1,0 +1,33 @@
+# WHY a backend-specific .gitignore: the repo root already has one, but this
+# folder must stay safe if it is ever copied out on its own (e.g. handed to a
+# teammate as "just the backend").
+
+# --- Secrets: never commit these -------------------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Model weights (only present if DETECTION_ENGINE=transformer) -----------
+# WHY ignore these: a checkpoint can be gigabytes and is reproducible from its
+# model id. Committing it would blow the repo size and slow every clone.
+*.bin
+*.safetensors
+*.onnx
+*.pt
+*.pth
+cache/

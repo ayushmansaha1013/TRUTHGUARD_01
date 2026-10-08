@@ -1,0 +1,9 @@
+# Additional dependencies the AI backend needs for JWT verification (Part C.1).
+# Add these to the existing requirements.txt — everything else stays as-is.
+pyjwt[crypto]>=2.9.0     # JWT decode + signature verification (HS256 and RS256)
+httpx>=0.27.0            # optional: DB role re-check via the Supabase REST API
+
+# Already present in a FastAPI project, listed for completeness:
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9  # required for UploadFile / multipart form parsing

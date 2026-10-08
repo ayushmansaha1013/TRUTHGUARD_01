@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================================
+   TruthGuard AI — global styles
+   Design tokens: navy #0A192F, card #112240, accent teal #64FFDA,
+   ink #E6F1FF, muted #8892B0, danger #FF4D4D
+   ===================================================================== */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-navy text-ink font-sans antialiased;
+    /* The heavy lifting is done by <AmbientBackground/> (see styles/3d.css),
+       which is a fixed, pointer-events:none layer. These gradients are just the
+       base tone underneath it so nothing looks flat if that layer is removed. */
+    background-image:
+      radial-gradient(900px 500px at 12% -8%, rgba(100, 255, 218, 0.07), transparent 60%),
+      radial-gradient(700px 500px at 100% 0%, rgba(136, 146, 176, 0.1), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(100, 255, 218, 0.25);
+    color: #e6f1ff;
+  }
+
+  /* Dark scrollbars to match the theme */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #233554 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #233554;
+    border-radius: 8px;
+  }
+
+  /* Respect users who ask the OS to reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-navy-card border border-navy-border rounded-card shadow-card;
+  }
+
+  .input {
+    @apply w-full bg-navy border border-navy-border rounded px-4 py-3 text-ink
+           placeholder-ink-muted/70 outline-none transition
+           focus:border-teal focus:ring-2 focus:ring-teal/25;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-5 py-3
+           font-medium transition duration-200 disabled:opacity-50
+           disabled:cursor-not-allowed select-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-teal/10 text-teal border border-teal/40
+           hover:bg-teal/20 hover:border-teal active:scale-[0.98];
+  }
+
+  .btn-solid {
+    @apply btn bg-teal text-navy font-semibold hover:brightness-110 active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-muted border border-navy-border hover:text-ink hover:border-ink-muted/50;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger/10 text-danger border border-danger/40 hover:bg-danger/20;
+  }
+
+  .label {
+    @apply block text-sm text-ink-muted mb-2;
+  }
+
+  .nav-link {
+    @apply px-3 py-2 rounded text-sm text-ink-muted transition
+           hover:text-teal hover:bg-teal/5;
+  }
+
+  .nav-link-active {
+    @apply px-3 py-2 rounded text-sm text-teal bg-teal/10 border border-teal/20;
+  }
+}
+
+/* Animated "Analyzing sources..." dots */
+.dot-1 { animation-delay: -0.32s; }
+.dot-2 { animation-delay: -0.16s; }
+.dot-3 { animation-delay: 0s; }

@@ -1,0 +1,3 @@
+# Pins the Python minor version on platforms that read runtime.txt.
+# Kept in step with PYTHON_VERSION in render.yaml — two files, one answer.
+python-3.11.9
