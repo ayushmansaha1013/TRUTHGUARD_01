@@ -589,3 +589,4 @@ cd frontend && npm test                             # 92 passed
 teaching aid for critical thinking, not an oracle.*
 
 ##BACKEND LINK: https://truthguard-01-3.onrender.com/
+##Website link:https://celadon-chebakia-798555.netlify.app/scanner
